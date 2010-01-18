@@ -1,0 +1,133 @@
+#!/usr/bin/php -q
+<?
+/*******
+  Things injection PHP script by mark@wadham.me
+ *******/
+
+$db_path = '/var/mobile/Applications/B282E08E-1B63-44D9-8E51-E56E8C14D63F/Documents/db.sqlite3';
+
+class Things {
+	public function __construct($db) {
+		if (!$this->db = new PDO("sqlite:$db")) {
+			die("Error opening '$db'\n");
+		}
+	}
+
+	private function randhex($n) {
+		$r = '';
+		for ($i=0;$i<$n;$i++) {
+			if (rand(0,1) == 0) $r .= chr(rand(65,70));
+			else $r .= chr(rand(48,57));
+		}
+		return $r;
+	}
+
+	private function get_uuid() {
+		while (1) {
+			$uuid = $this->randhex(8).'-'.$this->randhex(4).'-'.$this->randhex(4).'-'.$this->randhex(4).'-'.$this->randhex(12);
+			$r = @$this->db->query("SELECT * FROM Task WHERE uuid='$uuid'");
+			$exists = false;
+			foreach ($r as $row) {
+				$exists = true;
+			}
+			if (!$exists) break;
+		}
+		return $uuid;
+	}
+
+	# Apple Cocoa Epoch timestamp
+	private function timestamp() {
+		$ts = time();
+		$mt = microtime();
+		$mt = substr($mt,0,strpos($mt,' '));
+
+		for ($i=1970;$i<2001;$i++) {
+			if ($i % 4 == 0) {
+				$ts -= (86400 * 366);
+			} else {
+				$ts -= (86400 * 365);
+			}
+		}
+		return $ts+$mt;
+	}
+
+	public function target_focus($target) {
+		switch ($target) {
+			case 'inbox':	return 1;
+			case 'today': return 2;
+			case 'someday': return 16;
+		}
+	}
+
+	public function create_task($name, $target) {
+		$uuid = $this->get_uuid();
+		$ts = $this->timestamp();
+		$focus = $this->target_focus($target);
+
+		$_name = sqlite_escape_string($name);
+
+		$sql = "INSERT INTO Task (uuid,type,sequential,createdDate,touchedDate,status,title,dueDateIsDateOnly,reminder,time,focus,flagged) VALUES ('$uuid',2,0,$ts,$ts,1,'$_name',1,0.0,0.0,$focus,1);";
+		return ($this->db->query($sql));
+	}
+
+	private function dump_task_object($row) {
+		foreach ($row as $key => $value) {
+			if (!is_int($key)) {
+				echo "$key => $value\n";
+			}
+		}
+	}
+
+	public function dump_task($name) {
+		$_name = sqlite_escape_string($name);
+		$sql = "SELECT * FROM Task WHERE title='$_name'";
+		$r = $this->db->query($sql);
+		foreach ($r as $row) {
+			$this->dump_task_object($row);
+		}
+	}
+
+	public function running() {
+		return (`ps aux |grep Things.app |grep -v grep`) ? true : false;
+	}
+
+	public function usage() {
+		echo "Usage: things [-t inbox/today/someday] <name>\n";
+		echo "(default target is today)\n";
+		exit;
+	}
+}
+
+if ($argc <2) {
+	Things::usage();
+}
+
+if (Things::running()) {
+	die("Fatal: cannot execute while Things.app is running (bad stuff would probably happen).\n");
+}
+
+$target = 'today';
+
+for ($i=1;$i<$argc;$i++) {
+	if ($argv[$i] == '-t') {
+		if ($argc <($i+2)) {
+			Things::usage();
+		}
+		if (!in_array($argv[$i+1],array('inbox','today','someday'))) Things::usage();
+		$target = $argv[$i+1];
+		$i++;
+	} else {
+		$name = $argv[$i];
+	}
+}
+
+if (!isset($name)) Things::usage();
+
+$t = new Things($db_path);
+if ($t->create_task($name,$target)) {
+	echo "Created task '$name' in $target.\n";
+} else {
+	echo "Failed to create task '$name' in $target.\n";
+}
+
+?>
