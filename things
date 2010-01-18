@@ -102,8 +102,9 @@ if ($argc <2) {
 	Things::usage();
 }
 
-if (Things::running()) {
-	die("Fatal: cannot execute while Things.app is running (bad stuff would probably happen).\n");
+while (Things::running()) {
+	echo "Things.app is running.. waiting for it to exit so we don't cause bad stuff to happen..\n";
+	sleep(5);
 }
 
 $target = 'today';
